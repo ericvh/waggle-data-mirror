@@ -1,0 +1,70 @@
+# RabbitMQ to InfluxDB Bridge Configuration
+
+# Logging configuration
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+
+# RabbitMQ connection settings
+rabbitmq:
+  host: rabbitmq  # Use service name for Docker Compose
+  port: 5672
+  username: waggle
+  password: waggle
+  virtual_host: /
+  heartbeat: 600
+  blocked_connection_timeout: 300
+
+# InfluxDB connection settings
+influxdb:
+  url: http://influxdb:8086  # Use service name for Docker Compose
+  token: waggle-super-secret-auth-token
+  org: waggle
+  bucket: sensor-data  # Default bucket for data
+  timeout: 10000
+
+# Topic subscriptions and routing configuration
+topics:
+  # Example 1: Subscribe to sensor data from a specific exchange
+  - exchange: sensor.data
+    exchange_type: topic
+    routing_key: "sensor.*.temperature"
+    queue_name: temperature_queue
+    durable: true
+    measurement: temperature_readings
+    influx_bucket: sensor-data  # Override default bucket
+    tags:
+      source: waggle
+      data_type: temperature
+    field_mapping:
+      # Map message fields to InfluxDB field names
+      temp_c: temperature_celsius
+      humidity: relative_humidity
+  
+  # Example 2: Subscribe to all messages from an exchange
+  - exchange: weather.updates
+    exchange_type: topic
+    routing_key: "#"  # All messages
+    queue_name: weather_all_queue
+    durable: true
+    measurement: weather_data
+    tags:
+      source: weather_station
+      location: chicago
+  
+  # Example 3: Direct queue subscription (no exchange)
+  - queue_name: direct_sensor_queue
+    durable: true
+    measurement: direct_sensors
+    tags:
+      source: direct
+    field_mapping:
+      value: sensor_value
+      unit: measurement_unit
+  
+  # Example 4: Auto-generated queue name (temporary queue)
+  - exchange: alerts
+    routing_key: "alert.critical.*"
+    measurement: critical_alerts
+    tags:
+      severity: critical
+      source: alert_system 

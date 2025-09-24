@@ -1,0 +1,217 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq-influxdb-bridge
+  namespace: waggle-plugins
+  labels:
+    app: rabbitmq-influxdb-bridge
+    version: "1.0.0"
+    waggle.plugin: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq-influxdb-bridge
+  template:
+    metadata:
+      labels:
+        app: rabbitmq-influxdb-bridge
+        version: "1.0.0"
+        waggle.plugin: "true"
+    spec:
+      containers:
+      - name: rabbitmq-influxdb-bridge
+        image: waggle/rabbitmq-influxdb-bridge:1.0.0
+        imagePullPolicy: IfNotPresent
+        
+        # Environment variables for configuration
+        env:
+        - name: WAGGLE_NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: WAGGLE_PLUGIN_NAME
+          value: "rabbitmq-influxdb-bridge"
+        - name: WAGGLE_PLUGIN_VERSION
+          value: "1.0.0"
+        
+        # Resource limits and requests
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        
+        # Volume mounts for configuration
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/waggle/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: plugin-data
+          mountPath: /app/data
+        
+        # Health checks
+        livenessProbe:
+          exec:
+            command:
+            - python3
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          exec:
+            command:
+            - python3
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      
+      # Volumes
+      volumes:
+      - name: config-volume
+        configMap:
+          name: rabbitmq-influxdb-bridge-config
+          defaultMode: 0644
+      - name: plugin-data
+        emptyDir: {}
+      
+      # Service account for waggle integration
+      serviceAccountName: waggle-plugin
+      
+      # Restart policy
+      restartPolicy: Always
+      
+      # Node selection (if specific nodes are required)
+      nodeSelector:
+        waggle.node.type: "compute"
+
+---
+# ConfigMap for plugin configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-influxdb-bridge-config
+  namespace: waggle-plugins
+  labels:
+    app: rabbitmq-influxdb-bridge
+data:
+  config.yaml: |
+    # RabbitMQ to InfluxDB Bridge Configuration
+    
+    # Logging configuration
+    logging:
+      level: INFO
+    
+    # RabbitMQ connection settings
+    rabbitmq:
+      host: rabbitmq-service
+      port: 5672
+      username: waggle
+      password: waggle
+      virtual_host: /
+      heartbeat: 600
+      blocked_connection_timeout: 300
+    
+    # InfluxDB connection settings
+    influxdb:
+      url: http://influxdb-service:8086
+      token: "${INFLUXDB_TOKEN}"
+      org: waggle
+      bucket: sensor-data
+      timeout: 10000
+    
+    # Topic subscriptions
+    topics:
+      - exchange: sensor.data
+        exchange_type: topic
+        routing_key: "sensor.*.#"
+        queue_name: waggle_sensor_queue
+        durable: true
+        measurement: sensor_readings
+        tags:
+          source: waggle
+          plugin: rabbitmq-influxdb-bridge
+        field_mapping:
+          temperature: temp_celsius
+          humidity: rel_humidity
+          pressure: pressure_hpa
+
+---
+# Service for plugin (if needed for inter-plugin communication)
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-influxdb-bridge-service
+  namespace: waggle-plugins
+  labels:
+    app: rabbitmq-influxdb-bridge
+spec:
+  selector:
+    app: rabbitmq-influxdb-bridge
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+---
+# ServiceAccount for waggle plugin permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: waggle-plugin
+  namespace: waggle-plugins
+  labels:
+    app: rabbitmq-influxdb-bridge
+
+---
+# RBAC Role for plugin operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: waggle-plugin-role
+  namespace: waggle-plugins
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RBAC RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: waggle-plugin-rolebinding
+  namespace: waggle-plugins
+subjects:
+- kind: ServiceAccount
+  name: waggle-plugin
+  namespace: waggle-plugins
+roleRef:
+  kind: Role
+  name: waggle-plugin-role
+  apiGroup: rbac.authorization.k8s.io 

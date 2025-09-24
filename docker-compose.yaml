@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    container_name: waggle-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP port
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: waggle
+      RABBITMQ_DEFAULT_PASS: waggle
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - waggle-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # InfluxDB Time Series Database
+  influxdb:
+    image: influxdb:2.7
+    container_name: waggle-influxdb
+    hostname: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: waggle
+      DOCKER_INFLUXDB_INIT_PASSWORD: waggle-password
+      DOCKER_INFLUXDB_INIT_ORG: waggle
+      DOCKER_INFLUXDB_INIT_BUCKET: sensor-data
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: waggle-super-secret-auth-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    networks:
+      - waggle-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # RabbitMQ to InfluxDB Bridge Plugin
+  rabbitmq-influxdb-bridge:
+    build: .
+    container_name: waggle-bridge-plugin
+    hostname: bridge-plugin
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    environment:
+      WAGGLE_PLUGIN_NAME: "rabbitmq-influxdb-bridge"
+      WAGGLE_PLUGIN_VERSION: "1.0.0"
+      WAGGLE_NODE_ID: "dev-node-001"
+    volumes:
+      - ./config.yaml:/etc/waggle/config.yaml:ro
+      - plugin_logs:/app/logs
+    networks:
+      - waggle-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Data Generator (for testing)
+  data-generator:
+    image: python:3.9-slim
+    container_name: waggle-data-generator
+    hostname: data-generator
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - ./test-data-generator.py:/app/generate_data.py:ro
+    command: >
+      sh -c "
+        pip install pika &&
+        python generate_data.py
+      "
+    networks:
+      - waggle-network
+    profiles:
+      - testing
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:9.5.0
+    container_name: waggle-grafana
+    hostname: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: waggle
+      GF_INSTALL_PLUGINS: grafana-influxdb-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - waggle-network
+    profiles:
+      - monitoring
+
+volumes:
+  rabbitmq_data:
+    driver: local
+  influxdb_data:
+    driver: local
+  influxdb_config:
+    driver: local
+  plugin_logs:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  waggle-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

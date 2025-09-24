@@ -1,0 +1,113 @@
+name: "rabbitmq-influxdb-bridge"
+version: "1.0.0"
+description: >
+  A waggle plugin that subscribes to configurable RabbitMQ topics and rebroadcasts
+  the messages to a remote InfluxDB database. Features automatic reconnection,
+  flexible data transformation, and comprehensive error handling.
+
+authors:
+  - "Waggle Team"
+
+homepage: "https://github.com/waggle-sensor/plugin-rabbitmq-influxdb-bridge"
+
+keywords:
+  - "rabbitmq"
+  - "influxdb"
+  - "data-bridge"
+  - "message-routing"
+  - "time-series"
+
+architecture:
+  - "linux/amd64"
+  - "linux/arm64"
+
+waggle:
+  plugin_id: 1001
+  plugin_name: "rabbitmq-influxdb-bridge"
+  plugin_version: "1.0.0"
+
+inputs:
+  - id: "config_file"
+    type: "file"
+    description: "YAML configuration file defining RabbitMQ topics and InfluxDB settings"
+    default: "config.yaml"
+
+science:
+  - id: "data_forwarding"
+    description: "Forwards sensor data from RabbitMQ message queues to InfluxDB for time-series storage and analysis"
+    units: "messages/second"
+    sensor_label: "message_throughput"
+
+resources:
+  cpu:
+    min: 0.1
+    max: 1.0
+  memory:
+    min: "128Mi"
+    max: "512Mi"
+  gpu:
+    required: false
+
+config:
+  logging_level:
+    type: "string"
+    default: "INFO"
+    description: "Logging level (DEBUG, INFO, WARNING, ERROR)"
+    enum: ["DEBUG", "INFO", "WARNING", "ERROR"]
+  
+  rabbitmq_host:
+    type: "string"
+    default: "localhost"
+    description: "RabbitMQ server hostname"
+  
+  rabbitmq_port:
+    type: "integer"
+    default: 5672
+    description: "RabbitMQ server port"
+  
+  rabbitmq_username:
+    type: "string"
+    default: "guest"
+    description: "RabbitMQ authentication username"
+  
+  rabbitmq_password:
+    type: "string"
+    default: "guest"
+    description: "RabbitMQ authentication password"
+    sensitive: true
+  
+  influxdb_url:
+    type: "string"
+    default: "http://localhost:8086"
+    description: "InfluxDB server URL"
+  
+  influxdb_token:
+    type: "string"
+    description: "InfluxDB authentication token"
+    sensitive: true
+  
+  influxdb_org:
+    type: "string"
+    description: "InfluxDB organization name"
+  
+  influxdb_bucket:
+    type: "string"
+    default: "waggle-data"
+    description: "Default InfluxDB bucket for data storage"
+
+tags:
+  - "messaging"
+  - "database"
+  - "data-pipeline"
+  - "sensor-data"
+
+test:
+  # Test configuration for plugin validation
+  test_timeout: 30
+  requires_hardware: false
+
+profile:
+  # Profiling configuration for resource usage analysis
+  test_duration: 60
+  max_cpu_usage: 80
+  max_memory_usage: 256 
