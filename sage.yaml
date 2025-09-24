@@ -1,13 +1,13 @@
-name: "rabbitmq-influxdb-bridge"
-version: "1.0.0"
-description: "Mirror data to alternate influxdb"
+name: "waggle-mirror"
+version: "0.1.0"
+description: "Mirror waggle rabbitmq topics to remote influxdb"
 keywords: ""
 authors: "Eric Van Hensbergen"
 collaborators: ""
 funding: ""
 license: ""
-homepage: "https://github.com/waggle-sensor/plugin-rabbitmq-influxdb-bridge"
+homepage: ""
 source:
-  architecture:
+  architectures:
     - "linux/amd64"
     - "linux/arm64"
